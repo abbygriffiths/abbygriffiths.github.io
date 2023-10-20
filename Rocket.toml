@@ -1,0 +1,14 @@
+[default]
+address = "0.0.0.0"
+port = 10000
+keep_alive = 5
+ident = "Rocket"
+ip_header = "X-Real-IP" # set to `false` to disable
+log_level = "normal"
+cli_colors = true
+
+[default.shutdown]
+ctrlc = true
+signals = ["term", "hup"]
+grace = 5
+mercy = 5
