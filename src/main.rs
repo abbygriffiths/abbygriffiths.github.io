@@ -5,21 +5,28 @@ extern crate rocket;
 extern crate serde_json;
 
 use std::convert::Infallible;
-
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 use rocket::http::HeaderMap;
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket::serde::json::Value;
 
-struct RequestHeaders<'a>(HeaderMap<'a>);
+struct RequestHeaders<'a> {
+    headers: HeaderMap<'a>,
+    ip: IpAddr,
+}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for RequestHeaders<'r> {
     type Error = Infallible;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        Outcome::Success(RequestHeaders(req.headers().clone()))
+        let ip = req.client_ip().unwrap();
+        Outcome::Success(RequestHeaders {
+            headers: req.headers().clone(),
+            ip: ip,
+        })
     }
 }
 
@@ -27,21 +34,33 @@ impl<'r> FromRequest<'r> for RequestHeaders<'r> {
 fn index(token: RequestHeaders) -> Value {
     let mut headers_map = HashMap::new();
 
-    let _ = token
-        .0.clone()
+	let headers = token.headers.clone();
+    let _ = headers
         .into_iter()
         .map(|header| {
             let header_str = header.name.as_str();
-            headers_map.insert(header_str.to_string(), token.0.get_one(header_str).unwrap());
+            match header_str {
+                "user-agent" => {
+                    headers_map.insert("software", token.headers.get_one(header_str).unwrap());
+                }
+                "accept-language" => {
+                    headers_map.insert("language", token.headers.get_one(header_str).unwrap());
+                }
+                "x-forwarded-for" | "x-real-ip" => {
+                    headers_map.insert("ipaddress", token.headers.get_one(header_str).unwrap());
+                }
+                _ => (),
+            }
         })
         .collect::<Vec<_>>();
 
-    json!({
-        "message": "hello",
-        "headers": headers_map})
+	let ip_string = token.ip.to_string();
+    headers_map.insert("ipaddress", &ip_string);
+
+    json!(headers_map)
 }
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/api/", routes![index])
+    rocket::build().mount("/api/whoami", routes![index])
 }
